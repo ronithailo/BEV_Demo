@@ -54,8 +54,8 @@ Usage
     ```shell script
     ./src/visualize_results.py -h
     ```
-    Example 
-    **Command**
+    Example:
+    
     ```shell script
     ./src/visualize_results.py -f resources/results/scenes_data.json
     ```
