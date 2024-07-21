@@ -55,7 +55,7 @@ Usage
     ./src/visualize_results.py -h
     ```
     Example:
-    
+
     ```shell script
     ./src/visualize_results.py -f resources/results/scenes_data.json
     ```
@@ -89,7 +89,7 @@ Run Inference
 
 Arguments
 ---------
-- ``-f, --fps``: Wanted FPS (1 - 25). 
+- ``-f, --fps``: Wanted FPS (1 - 8). 
 - ``--infinite-loop``: Run the demo in infinite loop.
 - ``-i, --input``: path to the input folder, where all the .pt files are.
 - ``-m, --models``: path to the models folder.
