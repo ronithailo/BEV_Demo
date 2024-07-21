@@ -22,9 +22,9 @@ Usage
 
 1. Clone the repository:
     ```shell script
-    git clone <https://github.com/hailo-ai/Hailo-Application-Code-Examples.git> // another git
+    git clone git clone https://github.com/ronithailo/BEV_Demo.git
             
-    cd bev_demo
+    cd BEV_Demo
     ```
 
 2. Install dependencies:
