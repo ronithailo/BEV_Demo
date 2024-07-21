@@ -37,7 +37,10 @@ Usage
     ./download_resources.sh
     ```
 
-4. Visualize results:
+4. Data creation:
+    - Download the full dataset from https://www.nuscenes.org/nuscenes#download
+
+5. Visualize results:
     To visualize results without running inference, use the following command:
     ```shell script
     ./src/visualize_results.py
@@ -60,19 +63,16 @@ Usage
 Run Inference
 -------------
 
-1. Data creation:
-    - Download the full dataset from https://www.nuscenes.org/nuscenes#download
-
-2. Cloning PETR repository:
+1. Cloning PETR repository:
     ```shell script
     git clone https://github.com/megvii-research/PETR.git && cd PETR && git checkout f7525f9
     ```
 
-3. Pickle creation:
+2. Pickle creation:
     - To generate a pickle file for sweep data using the generate_sweep_pkl.py script from the PETR GitHub repository - 
     https://github.com/megvii-research/PETR/blob/main/tools/generate_sweep_pkl.py
 
-4. Data preparation:
+3. Data preparation:
     To prepare your data using the data_preparation script:
     - Update Paths: Update all paths in the data_preparation.py script file to match your environment.
 
@@ -81,7 +81,7 @@ Run Inference
         ```
     - Upon completion of the script, you will find .pt files generated as a result of the data preparation process.
 
-5. Run inference: 
+4. Run inference: 
     ```shell script
     ./src/bev.py -m <model_path> -i <input_path> -d <data_path> -f <wanted_FPS> --infinite-loop -n <number_of_scenes>
     ```
