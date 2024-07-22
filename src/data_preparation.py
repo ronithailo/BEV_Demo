@@ -92,7 +92,7 @@ def save_timestamp(img_metas, sample) -> None:
     time_stamp = torch.tensor(time_stamps)
     time_stamp = time_stamp.view(1, -1, 6)
     mean_time_stamp = (time_stamp[:, 1, :] - time_stamp[:, 0, :]).mean(-1)
-    torch.save(mean_time_stamp.cpu(), f'data_{sample}.pt')
+    torch.save(mean_time_stamp.cpu(), f'resources/input/data_{sample}.pt')
 
 def save_img2lidars(img_metas, sample) -> None:
     """
@@ -107,7 +107,7 @@ def save_img2lidars(img_metas, sample) -> None:
     img2lidars = np.asarray(img2lidars)
     img2lidars = torch.tensor(img2lidars)
     img2lidars = img2lidars = img2lidars.view(1, 12, 1, 1, 1, 4, 4).repeat(1, 1, 25, 10, 64, 1, 1)
-    torch.save(img2lidars.cpu(), f'img2lidars_{sample}.pt')
+    torch.save(img2lidars.cpu(), f'resources/input/img2lidars_{sample}.pt')
 
 if __name__ == "__main__":
     args = parse_args()
@@ -126,6 +126,6 @@ if __name__ == "__main__":
     for i, data in enumerate(data_loader):
         img_metas = data['img_metas'][0].data[0]
         sample = img_metas[0]['sample_idx']
-        torch.save(data['img'][0].data[0], f'data_{sample}.pt')
+        torch.save(data['img'][0].data[0], f'resources/input/data_{sample}.pt')
         save_timestamp(img_metas, sample)
         save_img2lidars(img_metas, sample)
