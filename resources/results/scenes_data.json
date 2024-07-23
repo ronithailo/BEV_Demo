@@ -1,9 +1,6 @@
 {
-    "results": [
+    "scenes": [
         "scene-0001", 
         "scene-0002"
-    ],
-    "tokens": [
-        "73030fb67d3c46cfb5e590168088ae39",
-        "c3e0e9f6ee8d4170a3d22a6179f1ca3a"]
+    ]
 }

@@ -217,7 +217,32 @@ def render_scene(
             cv2.destroyAllWindows()
             break
 
-def render_scenes(results, tokens):
+def get_scene_number(scene_name):
+    """
+    Extracts the scene number from a scene name formatted as 'scene-XXXX'.
+    """
+    scene_number = int(scene_name[6:])
+    return scene_number
+
+def get_scene_token_from_name(scene_name, nusc):
+    """
+    Retrieves the scene token for a given scene name from a NuSC object.
+    """
+    scenes = nusc.scene
+    scene = scenes[get_scene_number(scene_name) - 1]
+    scene_token = scene['token']
+    return scene_token
+
+def get_scene_tokens_from_names(scene_names, nusc):
+    """
+    Retrieves scene tokens for a list of scene names from a NuSC object.
+    """
+    scene_tokens = []
+    for scene_name in scene_names:
+        scene_tokens.append(get_scene_token_from_name(scene_name, nusc))
+    return scene_tokens
+
+def render_scenes(scene_names, tokens, dir_path, nusc):
     """
     Renders scenes based on results and tokens.
 
@@ -235,15 +260,15 @@ def render_scenes(results, tokens):
     window_name = 'BEV'
     cv2.namedWindow(window_name)
     cv2.moveWindow(window_name, 0, 0)
-    
-    for result, token in zip(results, tokens):
-        with open(f'{dir_path}/{result}.json', 'r') as f:
+
+    for scene_name, token in zip(scene_names, tokens):
+        with open(f'{dir_path}/{scene_name}.json', 'r') as f:
             scene_annos= json.load(f)
         render_scene(token, scene_annos, nusc)
-    
+
     cv2.destroyAllWindows()
 
-    
+
 def parse_args() -> argparse.Namespace:
     """Initialize argument parser for the script."""
     parser = argparse.ArgumentParser(description="Bev visualization")
@@ -260,8 +285,7 @@ if __name__ == "__main__":
 
     with open(args.file, 'r') as f:
         scene_data = json.load(f)
-        results = scene_data['results']
-        tokens = scene_data['tokens']
+        scene_names = scene_data['scenes']
+        tokens  = get_scene_tokens_from_names(scene_names, nusc)
 
-        render_scenes(results, tokens)
-
+        render_scenes(scene_names, tokens, dir_path, nusc)
