@@ -8,6 +8,7 @@
 from pyquaternion import Quaternion
 import numpy as np
 import cv2
+import math
 from typing import Tuple
 
 from nuscenes.utils.geometry_utils import view_points, box_in_image, BoxVisibility
@@ -28,6 +29,7 @@ FRAME_HEIGHT = 60
 IMAGE_WIDTH = 600
 IMAGE_HEIGHT = 338
 TOP_IMAGE_SIZE = (640, 640, 3)
+NUM_OF_IMAGES = 6
 
 def render_cv2_top_view(box,
                    im: np.ndarray,
@@ -104,27 +106,27 @@ def rgb_2_bgr(color) -> Tuple[int, int, int]:
     b = color[2]
     return (b, g, r)
 
-def rotate_image(white_image) -> np.ndarray:
+def rotate_image(bev_image, degrees, size) -> np.ndarray:
     """
     Rotates an image by 90 degrees
     """
-    rotation_matrix = cv2.getRotationMatrix2D((320, 320), 90, 1)
-    rotated_image = cv2.warpAffine(white_image, rotation_matrix, (640, 640))
+    rotation_matrix = cv2.getRotationMatrix2D((int(size/2), int(size/2)), degrees, 1)
+    rotated_image = cv2.warpAffine(bev_image, rotation_matrix, (size, size))
     return rotated_image
 
-def show_bev(white_image, annos, pose_record) -> np.ndarray:
+def show_bev(bev_image, annos, pose_record) -> np.ndarray:
     """
     Renders annotated bounding boxes on a top view radar image.
 
     Parameters:
-    - white_image (np.ndarray): Background image in numpy array format.
+    - bev_image (np.ndarray): Background image in numpy array format.
     - annos (list): List of annotations, each annotation containing 'translation', 'size', 
     'rotation', 'category_name', and 'token' keys.
     - pose_record (dict): Dictionary containing ego pose information with 'translation' and
     'rotation' keys.
 
     Returns:
-    - PIL.Image.Image: Image with rendered bounding boxes, rotated 90 degrees clockwise.
+    - np.ndarray: Image with rendered bounding boxes, rotated 90 degrees clockwise.
     """
     boxes = []
     for anno in annos:
@@ -138,8 +140,8 @@ def show_bev(white_image, annos, pose_record) -> np.ndarray:
         box_list.append(box)
         c = get_color(box.name)
         if "movable_object" not in box.name:
-            render_cv2_top_view(box, white_image, view=np.eye(4), colors=(c, c, c))
-    rotated_image = rotate_image(white_image)
+            render_cv2_top_view(box, bev_image, view=np.eye(4), colors=(c, c, c))
+    rotated_image = rotate_image(bev_image, 90, bev_image.shape[0])
     return rotated_image
 
 def show_image_with_boxes(cv2_image, token, annos, nusc) -> None:
@@ -197,7 +199,7 @@ def combine_images(images, bev_image) -> np.ndarray:
     - bev_image (np.ndarray): Bird's-eye view image in numpy array format.
 
     Returns:
-    - PIL.Image.Image: Combined image with 6 camera views arranged in a 2x3 grid
+    - np.ndarray: Combined image with 6 camera views arranged in a 2x3 grid
     and bird's-eye view image.
     """
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -205,7 +207,7 @@ def combine_images(images, bev_image) -> np.ndarray:
     font_thickness = 2
     font_color = (0, 0, 0)
     # Ensure that there are exactly 6 images
-    if len(images) != 6:
+    if len(images) != NUM_OF_IMAGES:
         raise ValueError("Please provide exactly 6 images.")
 
     image_dimensions = [img.size for img in images]
@@ -244,11 +246,69 @@ def combine_images(images, bev_image) -> np.ndarray:
     # Paste bev_image onto combined_image
     bev_height, bev_width, _ = bev_image.shape
     x_offset = total_width - bev_width
-    y_offset = 0
-    combined_image[:y_offset+bev_height, x_offset:x_offset+bev_width, :] = bev_image
-    combined_image[0, :, :] = [255, 255, 255]
+    y_offset = int((total_height - bev_height)/2)
+
+    combined_image[y_offset:y_offset+bev_height, x_offset:x_offset+bev_width, :] = bev_image
+    combined_image[y_offset, x_offset:, :] = [255, 255, 255]
 
     return combined_image
+
+def render_ego_centric_map(nusc,
+                           sample_data_token: str,
+                           axes_limit: float = 40) -> None:
+    """
+    Render map centered around the associated ego pose.
+    :param sample_data_token: Sample_data token.
+    :param axes_limit: Axes limit measured in meters.
+    :param ax: Axes onto which to render.
+    """
+
+    def crop_image(image: np.array,
+                    x_px: int,
+                    y_px: int,
+                    axes_limit_px: int) -> np.array:
+        x_min = int(x_px - axes_limit_px)
+        x_max = int(x_px + axes_limit_px)
+        y_min = int(y_px - axes_limit_px)
+        y_max = int(y_px + axes_limit_px)
+
+        cropped_image = image[y_min:y_max, x_min:x_max]
+
+        return cropped_image
+
+    # Get data.
+    sd_record = nusc.get('sample_data', sample_data_token)
+    sample = nusc.get('sample', sd_record['sample_token'])
+    scene = nusc.get('scene', sample['scene_token'])
+    log = nusc.get('log', scene['log_token'])
+    map_ = nusc.get('map', log['map_token'])
+    map_mask = map_['mask']
+    pose = nusc.get('ego_pose', sd_record['ego_pose_token'])
+
+    # Retrieve and crop mask.
+    pixel_coords = map_mask.to_pixel_coords(pose['translation'][0], pose['translation'][1])
+    scaled_limit_px = int(axes_limit * (1.0 / map_mask.resolution))
+    mask_raster = map_mask.mask()
+    cropped = crop_image(mask_raster, pixel_coords[0], pixel_coords[1], int(scaled_limit_px * math.sqrt(2)))
+
+    # Rotate image.
+    ypr_rad = Quaternion(pose['rotation']).yaw_pitch_roll
+    yaw_deg = -math.degrees(ypr_rad[0])
+    rotated_image = rotate_image(cropped, yaw_deg, cropped.shape[0])
+
+    # Crop image.
+    ego_centric_map = crop_image(rotated_image,
+                                    int(rotated_image.shape[1] / 2),
+                                    int(rotated_image.shape[0] / 2),
+                                    scaled_limit_px)
+    # Change colors.
+    ego_centric_map[ego_centric_map == map_mask.background] = 254
+    ego_centric_map[ego_centric_map == map_mask.foreground] = 125
+
+    # Resize image.
+    resized_image = cv2.resize(ego_centric_map, (640, 640))
+    result_image = cv2.cvtColor(resized_image, cv2.COLOR_GRAY2BGR)
+    return result_image
 
 def viz_proc(in_queue, iterations_num, pose_record, infinite_loop, cam_images, tokens, nusc) -> None:
     """
@@ -275,18 +335,22 @@ def viz_proc(in_queue, iterations_num, pose_record, infinite_loop, cam_images, t
     while True:
         for i in range(iterations_num):
             annos = in_queue.get()
-            white_image = np.ones(TOP_IMAGE_SIZE, dtype=np.uint8) * 255
-            cv2.rectangle(white_image, (int(TOP_IMAGE_SIZE[0]/2) - 20,
+
+            bev_image = render_ego_centric_map(nusc, tokens[NUM_OF_IMAGES][i])
+            cv2.rectangle(bev_image, (int(TOP_IMAGE_SIZE[0]/2) - 20,
                                         int(TOP_IMAGE_SIZE[0]/2) - 10),
                                         (int(TOP_IMAGE_SIZE[0]/2) + 20,
                                         int(TOP_IMAGE_SIZE[0]/2) + 10),
                                         COLOR_GREEN, thickness=LINE_WIDTH)
 
-            top_image = show_bev(white_image,annos,pose_record[i])
+            top_image = show_bev(bev_image,annos,pose_record[i])
             current_images = []
+            j= 0
             for cam_image, token in zip(cam_images, tokens):
-                show_image_with_boxes(cam_image[i], token[i], annos, nusc)
-                current_images.append(cam_image[i])
+                if j < NUM_OF_IMAGES:
+                    show_image_with_boxes(cam_image[i], token[i], annos, nusc)
+                    current_images.append(cam_image[i])
+                j = j + 1
 
             combine_img = combine_images(current_images, top_image)
             frame = cv2.cvtColor(np.array(combine_img), cv2.COLOR_RGB2BGR)

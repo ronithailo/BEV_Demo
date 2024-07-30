@@ -168,14 +168,14 @@ def render_scene(
                 impath, boxes, camera_intrinsic = get_sample_data(sd_rec['token'], scene_annos, nusc,
                                                     box_vis_level=BoxVisibility.ANY)
                 if channel == "LIDAR_TOP":
-                    im = np.ones((640, 640, 3), dtype=np.uint8) * 255  # 255 for white in uint8
+                    im = visualization.render_ego_centric_map(nusc, current_recs[channel]['token'])
                     cv2.rectangle(im, (300, 310), (340, 330), (0, 255, 0), thickness=2)
                     for box in boxes:
                         c = visualization.get_color(box.name)
                         if "movable_object" not in box.name:
                             visualization.render_cv2_top_view(box, im, view=np.eye(4), colors=(c, c, c))
 
-                    top_image = visualization.rotate_image(im)
+                    top_image = visualization.rotate_image(im, 90, 640)
                     top_image = cv2.cvtColor(np.array(top_image), cv2.COLOR_RGB2BGR)
                     top_image = cv2.resize(top_image, (imsize[0], 2 * imsize[1]))
                     canvas[
@@ -274,7 +274,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bev visualization")
     parser.add_argument("-f", "--file", default='resources/results/scenes_data.json', required=False,
                         help="scene data file path")
-    parser.add_argument("-d", "--data", default="resources/data/", help="path to the data folder, where the nuSence dataset is.")
+    parser.add_argument("-d", "--data", default="resources/data/",
+                        help="path to the data folder, where the nuScenes dataset is.")
     parsed_args = parser.parse_args()
     return parsed_args
 

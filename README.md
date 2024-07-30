@@ -4,6 +4,19 @@ BEV Demo
 This demo uses a Hailo-8 device with PETR to process 6 input images from nuScenes dataset.
 It annotates these images with 3D bounding boxes and creates Bird's Eye View (BEV) representations.
 
+![Example](./resources/bev.gif)
+<p xmlns:cc="http://creativecommons.org/ns#" xmlns:dct="http://purl.org/dc/terms/">
+    <span property="dct:title">This gif uses images from <a href="https://www.nuscenes.org" target="_blank" rel="noopener noreferrer">nuScenes dataset</a>, and it</span> is licensed under
+    <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank" rel="license noopener noreferrer" style="display:inline-block;">CC BY-NC-SA 4.0
+        <img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1" alt="">
+        <img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1" alt="">
+        <img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/nc.svg?ref=chooser-v1" alt="">
+        <img style="height:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/sa.svg?ref=chooser-v1" alt="">
+    </a>
+</p>
+
+
+
 Pipeline
 --------
 
@@ -13,7 +26,7 @@ Requirements
 ------------
 
 - hailo_platform==4.18.0
-- Pyhailort
+- Pyhailort - Enable hailort service
 - mmdet3d.datasets 
 
 
@@ -47,7 +60,7 @@ Usage
     ```
 
     Arguments:
-  
+
     ``-f, --file``: scene data file path.
 
     For more information:
@@ -89,11 +102,11 @@ Run Inference
 
 Arguments
 ---------
-- ``-f, --fps``: Wanted FPS (1 - 8). 
+- ``-f, --fps``: Wanted FPS (1 - 9). 
 - ``--infinite-loop``: Run the demo in infinite loop.
 - ``-i, --input``: path to the input folder, where all the .pt files are.
 - ``-m, --models``: path to the models folder.
-- ``-d, --data``: path to the data folder, where the nuSence dataset is.
+- ``-d, --data``: path to the data folder, where the nuScenes dataset is.
 - ``-n, --number-of-scenes``: number of scenes to run.
 
 For more information:
@@ -104,13 +117,19 @@ Example
 -------
 **Command**
 ```shell script
-./src/bev.py --f 5 -n 2
+./src/bev.py --fps 5 -n 2
 ```
 
 Additional Notes
 ----------------
 - The demo was only tested with ``HailoRT v4.18.0``
 - Ran the demo on: Dell PC (Model: Latitude 5431), with CPU (Model: 12th Gen Intel(R) Core(TM) i7-1270P).
+- All data is computed at runtime, except of the map, which is derived from the ground truth.
+
+License
+----------
+The BEV Demo is released under the MIT license. Please see the https://github.com/ronithailo/BEV_Demo/LICENSE file for more information.
+
 
 Disclaimer
 ----------

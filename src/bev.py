@@ -22,7 +22,7 @@ import multiprocessing
 import visualization
 import middle_post_process
 
-
+MAX_QUEUE_SIZE = 5
 
 def create_vdevice_params():
     """
@@ -33,7 +33,7 @@ def create_vdevice_params():
     params.multi_process_service = True
     return params
 
-def bb_send(network_group, wanted_fps) -> None:
+def bb_send(network_group, queue, infinite_loop) -> None:
     """
     Send input data to a network group of virtual streams.
 
@@ -46,18 +46,17 @@ def bb_send(network_group, wanted_fps) -> None:
     bb_input_vstreams_params = InputVStreamParams.make_from_network_group(network_group, format_type=FormatType.FLOAT32)
     with InputVStreams(network_group, bb_input_vstreams_params) as vstreams:
         while True:
-            for i in range(iterations_num):
+            for _ in range(iterations_num):
                 for vstream in vstreams:
-                    in_data = tensor_data[i]
+                    in_data = queue.get()
                     input_data = np.transpose(in_data[0], (0, 2, 3, 1))# (0, 3, 1, 2)
                     input_data = np.ascontiguousarray(input_data)
                     vstream.send(input_data)
-                    if wanted_fps > 0:
-                        time.sleep(1/(wanted_fps * 2.5 - 1.5))
+
             if not infinite_loop:
                 break
 
-def bb_recv(network_group, queue) -> None:
+def bb_recv(network_group, queue, infinite_loop) -> None:
     """
     Receive backbone data from video streams and put processed results into a queue.
 
@@ -90,7 +89,7 @@ def bb_recv(network_group, queue) -> None:
             if not infinite_loop:
                 break
 
-def transformer_send(network_group, queue) -> None:
+def transformer_send(network_group, queue, infinite_loop) -> None:
     """
     Send data from a queue to transformer hef.
 
@@ -110,7 +109,7 @@ def transformer_send(network_group, queue) -> None:
                                                                     format_type=FormatType.FLOAT32)
     with InputVStreams(network_group, t_input_vstreams_params) as vstreams:
         while True:
-            for _ in range(0, iterations_num):
+            for _ in range(iterations_num):
                 j=0
                 in_data = queue.get()
                 for vstream in vstreams:
@@ -120,7 +119,7 @@ def transformer_send(network_group, queue) -> None:
             if not infinite_loop:
                 break
 
-def transformer_recv(network_group,queue) -> None:
+def transformer_recv(network_group,queue, infinite_loop) -> None:
     """
     Receive data from the transformer hef and put processed results into a queue.
 
@@ -141,14 +140,16 @@ def transformer_recv(network_group,queue) -> None:
                                                                     format_type=FormatType.FLOAT32)
     with OutputVStreams(network_group, t_output_vstreams_params) as vstreams:
         while True:
-            for _ in range(0,iterations_num):
+            for _ in range(iterations_num):
                 j=0
-                output_data = [None]*3
+                output_data = {}
                 for vstream in vstreams:
-                    output_data[j] = vstream.recv()
+                    output_data[vstream.name] = vstream.recv()
                     j = j + 1
                     if j == 3:
-                        result=np.stack((output_data[0],output_data[2],output_data[1]), axis=0)
+                        result=np.stack((output_data['petrv2_b0_transformer_x32_BN_q_304_dec_3_UN_800x320_const0/mul_and_add5'],
+                                         output_data['petrv2_b0_transformer_x32_BN_q_304_dec_3_UN_800x320_const0/mul_and_add10'],
+                                         output_data['petrv2_b0_transformer_x32_BN_q_304_dec_3_UN_800x320_const0/mul_and_add15']), axis=0)
                         queue.put(result)
 
             if not infinite_loop:
@@ -164,27 +165,27 @@ def configure_and_get_network_group(hef, target):
 
 def check_fps_range(value) -> Union[str, int]:
     """
-    Validate and return an integer FPS value within the range of 1 to 8 (inclusive).
+    Validate and return an integer FPS value within the range of 1 to 9 (inclusive).
 
     Args:
         value (str or int): The FPS value to validate.
 
     Returns:
-        int: Validated FPS value within the range of 1 to 8.
+        int: Validated FPS value within the range of 1 to 9.
     """
     ivalue = int(value)
-    if ivalue < 1 or ivalue > 8:
-        raise argparse.ArgumentTypeError(f"FPS must be between 1 and 8 (inclusive), got {value}")
+    if ivalue < 1 or ivalue > 9:
+        raise argparse.ArgumentTypeError(f"FPS must be between 1 and 9 (inclusive), got {value}")
     return ivalue
 
 def parse_args() -> argparse.Namespace:
     """Initialize argument parser for the script."""
     parser = argparse.ArgumentParser(description="BEV demo")
-    parser.add_argument("-f", "--fps", default=0, type=check_fps_range, required=False, help="wanted FPS (1 - 8).")
+    parser.add_argument("-f", "--fps", default=-1, type=check_fps_range, required=False, help="wanted FPS (1 - 9).")
     parser.add_argument('--infinite-loop', action='store_true', help='run the demo in infinite loop.')
     parser.add_argument("-i", "--input", default="resources/input/", help="path to the input folder.")
     parser.add_argument("-m", "--models", default="resources/models/", help="path to the models folder.")
-    parser.add_argument("-d", "--data", default="resources/data/", help="path to the data folder, where the nuSences dataset is.")
+    parser.add_argument("-d", "--data", default="resources/data/", help="path to the data folder, where the nuScenes dataset is.")
     parser.add_argument("-n", "--number-of-scenes", default="2", type=int, help="number of scenes to run")
 
     parsed_args = parser.parse_args()
@@ -209,7 +210,7 @@ def create_data(iterations_num) -> Tuple[List[None], List[None], List[None], Lis
     cams_token = []
     cams_images = []
 
-    for _ in range(6):
+    for _ in range(7):
         token, img = create_token_and_image(iterations_num)
         cams_token.append(token)
         cams_images.append(img)
@@ -228,15 +229,16 @@ def load_image(sample, cam, cam_token, cam_images) -> None:
     """
     sd_rec = nusc.get('sample_data', sample['data'][cam])
     cam_token[index] = sd_rec['token']
-    path = sd_rec['filename']
-    cam_images[index] = cv2.imread(f'{args.data}/{path}')
-    cam_images[index] = cv2.cvtColor(cam_images[index], cv2.COLOR_BGR2RGB)
+    if cam != 'LIDAR_TOP':
+        path = sd_rec['filename']
+        cam_images[index] = cv2.imread(f'{args.data}/{path}')
+        cam_images[index] = cv2.cvtColor(cam_images[index], cv2.COLOR_BGR2RGB)
 
 def load_images(sample, cams_token, cams_images) -> None:
     """
     Load and preprocess images for multiple cameras in a given sample.
     """
-    cams = ['CAM_FRONT_LEFT','CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
+    cams = ['CAM_FRONT_LEFT','CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT', 'LIDAR_TOP']
     for cam_token, cam_images, cam in zip(cams_token, cams_images, cams):
         load_image(sample, cam, cam_token, cam_images)
 
@@ -258,23 +260,24 @@ if __name__ == "__main__":
     transformer_hef_path = f'{args.models}/petrv2_b0_transformer_x32_BN_q_304_dec_3_UN_800x320_const0.hef'
     post_proc_onnx_path = f'{args.models}/petrv2_post_process.onnx'
 
-    bb_out_mid_in_queue = multiprocessing.Queue()
-    mid_out_trans_in_queue = multiprocessing.Queue()
-    trans_out_pp_in_queue = multiprocessing.Queue()
-    pp_out_3dnms_in_queue = multiprocessing.Queue()
-    d3nms_out_vis_in_queue = multiprocessing.Queue()
-    token_queue = multiprocessing.Queue()
-    vis_out_top_in_queue = multiprocessing.Queue()
+    bb_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
+    bb_out_mid_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
+    mid_out_trans_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
+    trans_out_pp_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
+    pp_out_3dnms_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
+    d3nms_out_vis_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
+    token_queue = multiprocessing.Queue(maxsize=7 * MAX_QUEUE_SIZE)
+    vis_out_top_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
 
     nusc = NuScenes(version='v1.0-mini', dataroot=args.data, verbose=False)
 
     tokens = []
-    for i in range(2):
+    for i in range(args.number_of_scenes):
         tokens += get_scene_tokens(i, nusc)
 
     iterations_num = len(tokens)
     infinite_loop = args.infinite_loop
-    wanted_fps = args.fps 
+    wanted_fps = args.fps
 
     backbone_hef = HEF(backbone_hef_path)
     transformer_hef = HEF(transformer_hef_path)
@@ -293,9 +296,9 @@ if __name__ == "__main__":
         BB_network_group_params = BB_network_group.create_params()
         T_network_group = configure_and_get_network_group(transformer_hef, target)
         T_network_group_params = T_network_group.create_params()
-        bb_send_process = multiprocessing.Process(target=bb_send, args=(BB_network_group, wanted_fps))
+        bb_send_process = multiprocessing.Process(target=bb_send, args=(BB_network_group, bb_in_queue, infinite_loop))
         bb_recv_process = multiprocessing.Process(target=bb_recv, args=(BB_network_group,
-                                                bb_out_mid_in_queue))
+                                                bb_out_mid_in_queue, infinite_loop))
         mid_process = multiprocessing.Process(target=middle_post_process.middle_proc,
                                                 args=(bb_out_mid_in_queue,
                                                 mid_out_trans_in_queue,
@@ -303,9 +306,9 @@ if __name__ == "__main__":
                                                 mid_proc_onnx_path, img2lidars,
                                                 matmul, classes))
         transformer_send_process = multiprocessing.Process(target=transformer_send, args=(T_network_group,
-                                                mid_out_trans_in_queue))
+                                                mid_out_trans_in_queue, infinite_loop))
         transformer_recv_process = multiprocessing.Process(target=transformer_recv, args=(T_network_group,
-                                                trans_out_pp_in_queue))
+                                                trans_out_pp_in_queue, infinite_loop))
         post_process = multiprocessing.Process(target=middle_post_process.post_proc,
                                                 args=(trans_out_pp_in_queue,
                                                 pp_out_3dnms_in_queue, iterations_num,
@@ -344,17 +347,22 @@ if __name__ == "__main__":
             d3nms_process.start()
             mid_process.start()
             start_time = time.time()
-            ind = 0
 
+            ind = 0
             while True:
-                for token in tokens:
+                for i, token in enumerate(tokens):
+                    bb_in_queue.put(tensor_data[i])
                     token_queue.put(token)
                     ind = ind + 1
+                    if wanted_fps > 0:
+                        time.sleep(1/wanted_fps)
 
                 if not infinite_loop:
                     break
 
         except KeyboardInterrupt:
+            end_time = time.time()
+            num_of_iters = ind -  token_queue.qsize()
             bb_recv_process.terminate()
             bb_send_process.terminate()
             mid_process.terminate()
@@ -363,7 +371,6 @@ if __name__ == "__main__":
             post_process.terminate()
             d3nms_process.terminate()
             visualize_process.terminate()
-            os._exit(0)
         if not infinite_loop:
             bb_recv_process.join()
             bb_send_process.join()
@@ -374,7 +381,10 @@ if __name__ == "__main__":
             d3nms_process.join()
             visualize_process.join()
             end_time = time.time()
-            milliseconds_new_bb = (end_time - start_time) * 1000
-            print("Time taken:", milliseconds_new_bb, "milliseconds - whole pipeline")
-            fps =  1000 / (milliseconds_new_bb / iterations_num)
-            print("Average fps is ", fps)
+            num_of_iters = iterations_num
+
+        milliseconds = (end_time - start_time) * 1000
+        print("Time taken:", milliseconds, "milliseconds - whole pipeline")
+        fps =  1000 / (milliseconds / num_of_iters)
+        print("Average fps is ", fps)
+        os._exit(0)

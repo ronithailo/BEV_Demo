@@ -33,7 +33,8 @@ def middle_proc(in_queue,out_queue, iterations_num, infinite_loop,
     data from 'img2lidars', 'matmul', and 'classes' arrays.
     """
     sess_mid_proc = onnxruntime.InferenceSession(mid_proc_onnx_path, providers=['OpenVINOExecutionProvider'])
-    output_names = [x.name for x in sess_mid_proc.get_outputs()]
+    output_names = [x.name 
+                    for x in sess_mid_proc.get_outputs()]
     matmul = matmul.numpy()
     classes = classes.numpy()
     while True:
@@ -124,7 +125,7 @@ def denormalize_bbox(normalized_bboxes) -> torch.Tensor:
     rot_sine = normalized_bboxes[..., 6:7]
 
     rot_cosine = normalized_bboxes[..., 7:8]
-    rot = torch.atan2(rot_sine, rot_cosine)
+    rot = torch.atan2(rot_sine, rot_cosine) #TODO: use math
 
     # center in the bev
     cx = normalized_bboxes[..., 0:1]
