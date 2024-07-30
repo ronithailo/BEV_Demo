@@ -21,6 +21,7 @@ from hailo_platform import (HEF, Device, VDevice, HailoStreamInterface, Configur
 import multiprocessing
 import visualization
 import middle_post_process
+import fps_calc
 
 MAX_QUEUE_SIZE = 5
 
@@ -278,6 +279,7 @@ if __name__ == "__main__":
     iterations_num = len(tokens)
     infinite_loop = args.infinite_loop
     wanted_fps = args.fps
+    fps_calculator = fps_calc.fps_calc(10)
 
     backbone_hef = HEF(backbone_hef_path)
     transformer_hef = HEF(transformer_hef_path)
@@ -318,7 +320,7 @@ if __name__ == "__main__":
                                                 token_queue, iterations_num, infinite_loop, nusc))
         visualize_process = multiprocessing.Process(target=visualization.viz_proc,
                                                 args=(d3nms_out_vis_in_queue,
-                                                iterations_num,
+                                                iterations_num, fps_calculator,
                                                 pose_record, infinite_loop,
                                                 cams_images, cams_token, nusc))
 
@@ -361,8 +363,6 @@ if __name__ == "__main__":
                     break
 
         except KeyboardInterrupt:
-            end_time = time.time()
-            num_of_iters = ind -  token_queue.qsize()
             bb_recv_process.terminate()
             bb_send_process.terminate()
             mid_process.terminate()
@@ -371,6 +371,7 @@ if __name__ == "__main__":
             post_process.terminate()
             d3nms_process.terminate()
             visualize_process.terminate()
+            os._exit(0)
         if not infinite_loop:
             bb_recv_process.join()
             bb_send_process.join()
@@ -380,11 +381,3 @@ if __name__ == "__main__":
             post_process.join()
             d3nms_process.join()
             visualize_process.join()
-            end_time = time.time()
-            num_of_iters = iterations_num
-
-        milliseconds = (end_time - start_time) * 1000
-        print("Time taken:", milliseconds, "milliseconds - whole pipeline")
-        fps =  1000 / (milliseconds / num_of_iters)
-        print("Average fps is ", fps)
-        os._exit(0)

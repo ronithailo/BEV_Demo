@@ -310,7 +310,7 @@ def render_ego_centric_map(nusc,
     result_image = cv2.cvtColor(resized_image, cv2.COLOR_GRAY2BGR)
     return result_image
 
-def viz_proc(in_queue, iterations_num, pose_record, infinite_loop, cam_images, tokens, nusc) -> None:
+def viz_proc(in_queue, iterations_num, fps_calc, pose_record, infinite_loop, cam_images, tokens, nusc) -> None:
     """
     Visualizes a sequence of camera images with annotated bounding boxes and optionally
     a top-down radar view.
@@ -356,7 +356,7 @@ def viz_proc(in_queue, iterations_num, pose_record, infinite_loop, cam_images, t
             frame = cv2.cvtColor(np.array(combine_img), cv2.COLOR_RGB2BGR)
             cv2.imshow('Video', frame)
             cv2.waitKey(1)  # Wait indefinitely for a key press
-
+            fps_calc.update_fps()
         if not infinite_loop:
             break
     cv2.destroyAllWindows()
