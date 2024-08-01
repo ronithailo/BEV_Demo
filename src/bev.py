@@ -78,14 +78,17 @@ def bb_recv(network_group, queue, infinite_loop) -> None:
     with OutputVStreams(network_group, bb_output_vstreams_params) as vstreams:
         while True:
             for _ in range(iterations_num):
+                output_data = {}
                 for vstream in vstreams:
-                    data = []
-                    for _ in range(12):
-                        data.append(vstream.recv())
+                    output_data[vstream.name] = []
+                for _ in range(12):
+                    for vstream in vstreams:
+                        output_data[vstream.name].append(vstream.recv())
 
-                    result = np.transpose(np.expand_dims(np.array(data), axis=0), (0, 1, 4, 2, 3))
+                result1 = np.transpose(np.array(output_data['petrv2_b0_backbone_x32_BN_q_304_dec_3_UN_800x320/conv31']), (0, 3, 1, 2))
+                result2 = np.transpose(np.array(output_data['petrv2_b0_backbone_x32_BN_q_304_dec_3_UN_800x320/conv29']), (0, 3, 1, 2))
 
-                    queue.put(result) # backbone output
+                queue.put((result1, result2)) # backbone output
 
             if not infinite_loop:
                 break
@@ -257,7 +260,9 @@ def get_scene_tokens(i, nusc) -> List[str]:
 if __name__ == "__main__":
     args = parse_args()
     backbone_hef_path = f'{args.models}/petrv2_b0_backbone_x32_BN_q_304_dec_3_UN_800x320.hef'
-    mid_proc_onnx_path = f'{args.models}/petrv2_middle_process.onnx'
+    mid1_proc_onnx_path = f'{args.models}/petrv2_middle_process_1.onnx'
+    mid2_proc_onnx_path = f'{args.models}/petrv2_middle_process_2.onnx'
+    
     transformer_hef_path = f'{args.models}/petrv2_b0_transformer_x32_BN_q_304_dec_3_UN_800x320_const0.hef'
     post_proc_onnx_path = f'{args.models}/petrv2_post_process.onnx'
 
@@ -279,7 +284,7 @@ if __name__ == "__main__":
     iterations_num = len(tokens)
     infinite_loop = args.infinite_loop
     wanted_fps = args.fps
-    fps_calculator = fps_calc.fps_calc(10)
+    fps_calculator = fps_calc.FPSCalc(10)
 
     backbone_hef = HEF(backbone_hef_path)
     transformer_hef = HEF(transformer_hef_path)
@@ -294,18 +299,18 @@ if __name__ == "__main__":
     params = create_vdevice_params()
 
     with VDevice(params) as target:
-        BB_network_group = configure_and_get_network_group(backbone_hef, target)
-        BB_network_group_params = BB_network_group.create_params()
+        bb_network_group = configure_and_get_network_group(backbone_hef, target)
+        bb_network_group_params = bb_network_group.create_params()
         T_network_group = configure_and_get_network_group(transformer_hef, target)
         T_network_group_params = T_network_group.create_params()
-        bb_send_process = multiprocessing.Process(target=bb_send, args=(BB_network_group, bb_in_queue, infinite_loop))
-        bb_recv_process = multiprocessing.Process(target=bb_recv, args=(BB_network_group,
+        bb_send_process = multiprocessing.Process(target=bb_send, args=(bb_network_group, bb_in_queue, infinite_loop))
+        bb_recv_process = multiprocessing.Process(target=bb_recv, args=(bb_network_group,
                                                 bb_out_mid_in_queue, infinite_loop))
         mid_process = multiprocessing.Process(target=middle_post_process.middle_proc,
                                                 args=(bb_out_mid_in_queue,
                                                 mid_out_trans_in_queue,
                                                 iterations_num, infinite_loop,
-                                                mid_proc_onnx_path, img2lidars,
+                                                mid1_proc_onnx_path, mid2_proc_onnx_path, img2lidars,
                                                 matmul, classes))
         transformer_send_process = multiprocessing.Process(target=transformer_send, args=(T_network_group,
                                                 mid_out_trans_in_queue, infinite_loop))
@@ -381,3 +386,4 @@ if __name__ == "__main__":
             post_process.join()
             d3nms_process.join()
             visualize_process.join()
+            

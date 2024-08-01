@@ -9,7 +9,7 @@ import torch
 from nuscenes.utils.data_classes import Box
 
 def middle_proc(in_queue,out_queue, iterations_num, infinite_loop,
-            mid_proc_onnx_path, img2lidars, matmul, classes) -> None:
+            mid1_proc_onnx_path, mid2_proc_onnx_path, img2lidars, matmul, classes) -> None:
     """
     Process input data using an ONNX model and put the results into an output queue.
 
@@ -32,24 +32,31 @@ def middle_proc(in_queue,out_queue, iterations_num, infinite_loop,
     into 'out_queue'. Each iteration processes data from 'in_queue' using corresponding
     data from 'img2lidars', 'matmul', and 'classes' arrays.
     """
-    sess_mid_proc = onnxruntime.InferenceSession(mid_proc_onnx_path, providers=['OpenVINOExecutionProvider'])
-    output_names = [x.name 
-                    for x in sess_mid_proc.get_outputs()]
+    sess_mid1_proc = onnxruntime.InferenceSession(mid1_proc_onnx_path, providers=['OpenVINOExecutionProvider'])
+    sess_mid2_proc = onnxruntime.InferenceSession(mid2_proc_onnx_path, providers=['OpenVINOExecutionProvider'])
+
+    output_names1 = [x.name for x in sess_mid1_proc.get_outputs()]
+    output_names2 = [x.name for x in sess_mid2_proc.get_outputs()]
+
     matmul = matmul.numpy()
     classes = classes.numpy()
     while True:
         for i in range (iterations_num):
-            mid_input = in_queue.get()
+            mid1_input, mid2_input = in_queue.get()
             img2lid = img2lidars[i]
-            input_dict = {
-                '2152': matmul, #np.zeros((1,12,25,10,64,4,1)).astype(np.float32),
-                '2211': img2lid, #np.zeros((1,12,25,10,64,4,4)).astype(np.float32),
-                '2955': classes, #np.zeros((1,12,256,10,25)).astype(np.float32),
-                '1': mid_input #.astype(np.float32)
+            input_dict1 = {
+                '2152': matmul,
+                '2211': img2lid,
+                '2955': classes,
+                '2721': mid1_input
+            }
+            input_dict2 = {
+                '1872': mid2_input
             }
 
-            results = sess_mid_proc.run(output_names, input_dict)
-            result = np.stack((results[0],results[1]),axis=0)
+            result1 = sess_mid1_proc.run(output_names1, input_dict1)
+            result2 = sess_mid2_proc.run(output_names2, input_dict2)
+            result = np.stack((result2[0],result1[0]),axis=0)
 
             out_queue.put(result)
 
@@ -125,7 +132,7 @@ def denormalize_bbox(normalized_bboxes) -> torch.Tensor:
     rot_sine = normalized_bboxes[..., 6:7]
 
     rot_cosine = normalized_bboxes[..., 7:8]
-    rot = torch.atan2(rot_sine, rot_cosine) #TODO: use math
+    rot = torch.atan2(rot_sine, rot_cosine)
 
     # center in the bev
     cx = normalized_bboxes[..., 0:1]
@@ -484,3 +491,4 @@ def d3nms_proc(in_queue, out_queue,tok_queue, iterations_num, infinite_loop, nus
 
         if not infinite_loop:
             break
+        
