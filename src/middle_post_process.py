@@ -93,8 +93,8 @@ def post_proc(in_queue,out_queue, iterations_num, infinite_loop, post_proc_onnx_
             timest = timestamp[i]
 
             transformer_out = {
-                    'x.1'  : transformer_output,
-                    '1019' :  np.expand_dims(np.expand_dims(timest.numpy(), axis=0), axis=0)
+                    'x.1'  : transformer_output.astype(np.float32),
+                    '1019' : np.expand_dims(np.expand_dims(timest.numpy(), axis=0), axis=0).astype(np.float32)
             }
 
             results = sess_post_proc.run(output_names, transformer_out)

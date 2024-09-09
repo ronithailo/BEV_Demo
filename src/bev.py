@@ -275,7 +275,7 @@ if __name__ == "__main__":
     token_queue = multiprocessing.Queue(maxsize=7 * MAX_QUEUE_SIZE)
     vis_out_top_in_queue = multiprocessing.Queue(maxsize=MAX_QUEUE_SIZE)
 
-    nusc = NuScenes(version='v1.0-mini', dataroot=args.data, verbose=False)
+    nusc = NuScenes(version='v1.0-trainval', dataroot=args.data, verbose=False)
 
     tokens = []
     for i in range(args.number_of_scenes):
